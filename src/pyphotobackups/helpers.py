@@ -122,6 +122,7 @@ def process_dir_recursively(
             desc=f"syncing : {source_dir.name:<18} |",
             bar_format="{desc} {bar} [{n_fmt}/{total_fmt}]",
             ncols=80,
+            miniters=1
         ):
             source = str(Path(*file_path.parts[-2:]))
             if is_processed_source(source, conn):
