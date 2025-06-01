@@ -18,7 +18,7 @@ from .helpers import (
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CLI tool to sync photos from your iPhone and organize them into yyyy-mm folders."
+        description="CLI tool to sync photos from your iPhone and organize them into YYYY-MM folders."
     )
     parser.add_argument(
         "dest",
