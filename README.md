@@ -17,7 +17,7 @@ A very simple CLI tool to sync photos and videos from your iPhone to your drive,
 uv tool install pyphotobackups
 ```
 
-### pipx
+### with pipx
 
 ```
 pipx install pyphotobackups
