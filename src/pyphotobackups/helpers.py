@@ -11,12 +11,20 @@ from tqdm import tqdm
 
 
 def get_db_path(target_dir: Path) -> Path:
+    """
+    This function defines the path of the db file to be stored, under the dest dir.
+    """
     backup_dir = target_dir / ".pyphotobackups"
     backup_dir.mkdir(exist_ok=True)
     return backup_dir / "db"
 
 
 def init_db(target_dir: Path) -> sqlite3.Connection:
+    """
+    Initialize the database and return the connection.
+
+    This functions also creates two tables, `run` and `sync`, if they did not exist.
+    """
     conn = sqlite3.connect(get_db_path(target_dir))
     cursor = conn.cursor()
     cursor.execute(
@@ -50,6 +58,9 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
 
 
 def get_serial_number():
+    """
+    Retrieve the serial number from a mounted iPhone.
+    """
     result = subprocess.run(
         ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
     )
@@ -57,11 +68,17 @@ def get_serial_number():
 
 
 def get_file_timestamp(file_path: Path) -> datetime:
+    """
+    Retrieve the modification time of a file.
+    """
     mtime = file_path.stat().st_mtime
     return datetime.fromtimestamp(mtime)
 
 
 def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
+    """
+    Check if a file from source has already been processed by its path (as in format `100APPLE/IMAGE_001.png` etc.)
+    """
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM sync WHERE source = ?", (source,))
     count = cursor.fetchone()[0]
@@ -70,6 +87,9 @@ def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
 
 
 def abort():
+    """
+    Abort the program with exit code 1.
+    """
     print("[pyphotobackups] aborting")
     sys.exit(1)
 
@@ -102,6 +122,28 @@ def process_dir_recursively(
     counter: int,
     size_increment: int,
 ) -> tuple[int, int, int]:
+    """
+    Recursively processes files from the source directory, copying them to the target directory
+    while updating a file sync database. Tracks the number of files copied and the total size.
+
+    Args:
+        - source_dir (Path): The directory to process.
+        - target_dir (Path): The destination directory for the files.
+        - conn (sqlite3.Connection): The database connection for file sync tracking.
+        - counter (int): The number of files processed, updated during recursion.
+        - size_increment (int): The total size of processed files, updated during recursion.
+
+    Returns:
+        tuple[int, int, int]:
+            - exit_code (int): 1 if interrupted, 0 if successful.
+            - counter (int): Updated file count.
+            - size_increment (int): Updated total file size in bytes.
+
+    Notes:
+        - Copies files to a subdirectory based on their timestamp.
+        - Skips already processed files and handles errors like permission issues or insufficient space.
+        - Stops and returns if interrupted (via KeyboardInterrupt).
+    """
     try:
         dirs = [path for path in source_dir.iterdir() if path.is_dir()]
         dirs = sorted(dirs)
@@ -176,7 +218,17 @@ def get_directory_size(path: Path) -> int:
     return total_size
 
 
-def convert_size_to_readable(num: int | float) -> str:
+def convert_size_to_readable(size: int) -> str:
+    """
+    Convert a size in bytes to a human-readable format (e.g., KB, MB, GB).
+
+    Args:
+        size (int): The size in bytes.
+
+    Returns:
+        str: The size in a human-readable format (e.g., "1.0K", "2.3M").
+    """
+    num = float(size)
     if num == 0:
         return "0B"
     for unit in ["B", "K", "M", "G"]:
