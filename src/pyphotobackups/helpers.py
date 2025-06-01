@@ -2,12 +2,11 @@ import errno
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-import filetype
-from blake3 import blake3
 from tqdm import tqdm
 
 
@@ -23,8 +22,7 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS sync (
-            hash TEXT PRIMARY KEY,
-            source TEXT NOT NULL,
+            source TEXT PRIMARY KEY,
             dest TEXT NOT NULL,
             timestamp TIMESTAMP NOT NULL,
             inserted_at TIMESTAMP NOT NULL
@@ -35,7 +33,7 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS run (
             id TEXT PRIMARY KEY,
-            source TEXT NOT NULL,
+            serial_number TEXT NOT NULL,
             dest TEXT NOT NULL,
             start TIMESTAMP NOT NULL,
             end TIMESTAMP NOT NULL,
@@ -51,24 +49,20 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
     return conn
 
 
-def get_file_hash(file_path: Path) -> str:
-    return blake3(file_path.read_bytes()).hexdigest()
+def get_serial_number():
+    result = subprocess.run(
+        ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
 
 
 def get_file_timestamp(file_path: Path) -> datetime:
     mtime = file_path.stat().st_mtime
     return datetime.fromtimestamp(mtime)
 
-
-def is_image_or_video(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    return filetype.is_image(str(path)) or filetype.is_video(str(path))
-
-
-def is_processed_file(file_hash: str, conn: sqlite3.Connection) -> bool:
+def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM sync WHERE hash = ?", (file_hash,))
+    cursor.execute("SELECT COUNT(*) FROM sync WHERE source = ?", (source,))
     count = cursor.fetchone()[0]
     cursor.close()
     return count > 0
@@ -77,6 +71,27 @@ def is_processed_file(file_hash: str, conn: sqlite3.Connection) -> bool:
 def abort():
     print("[pyphotobackups] aborting")
     sys.exit(1)
+
+
+def is_ifuse_installed():
+    if shutil.which("ifuse"):
+        return True
+    return False
+
+
+def mount_iPhone():
+    iPhone_path = Path("/tmp/iPhone")
+    if iPhone_path.exists():
+        print("[pyphotobackups] /tmp/iPhone already exists. remove it and run again")
+        abort()
+    iPhone_path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ifuse", str(iPhone_path)])
+
+
+def unmount_iPhone():
+    iPhone_path = Path("/tmp/iPhone")
+    subprocess.run(["umount", str(iPhone_path)])
+    iPhone_path.rmdir()
 
 
 def process_dir_recursively(
@@ -89,7 +104,7 @@ def process_dir_recursively(
     try:
         dirs = [path for path in source_dir.iterdir() if path.is_dir()]
         dirs = sorted(dirs)
-        files = [path for path in source_dir.iterdir() if is_image_or_video(path)]
+        files = [path for path in source_dir.iterdir() if path.is_file()]
         exit_code = 0
 
         # depth first
@@ -108,8 +123,8 @@ def process_dir_recursively(
             bar_format="{desc} {bar} [{n_fmt}/{total_fmt}]",
             ncols=80,
         ):
-            file_hash = get_file_hash(file_path)
-            if is_processed_file(file_hash, conn):
+            source = str(Path(*file_path.parts[-2:]))
+            if is_processed_source(source, conn):
                 continue
             file_name = file_path.name
             file_timestamp = get_file_timestamp(file_path)
@@ -135,11 +150,10 @@ def process_dir_recursively(
             size_increment += file_path.stat().st_size
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT OR IGNORE INTO sync (hash, source, dest, timestamp, inserted_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO sync (source, dest, timestamp, inserted_at) VALUES (?, ?, ?, ?)",
                 (
-                    file_hash,
-                    str(file_path),
-                    str(target_file_path),
+                    source,
+                    str(Path(*target_file_path.parts[-2:])),
                     file_timestamp,
                     datetime.now(),
                 ),

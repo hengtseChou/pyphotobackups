@@ -1,10 +1,12 @@
 [project]
 name = "pyphotobackups"
 version = "0.1.0"
-description = "CLI tool to sync photos and organize them into yyyy-mm folders."
+description = "CLI tool to sync photos from your iPhone and organize them into yyyy-mm folders."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["blake3>=1.0.5", "filetype>=1.2.0", "tqdm>=4.67.1"]
+dependencies = [
+ "tqdm>=4.67.1",
+]
 
 [dependency-groups]
 compile = ["nuitka>=2.7.3"]
