@@ -100,19 +100,17 @@ def is_ifuse_installed():
     return False
 
 
-def mount_iPhone():
-    iPhone_path = Path("/tmp/iPhone")
-    if iPhone_path.exists():
-        print("[pyphotobackups] /tmp/iPhone already exists. remove it and run again")
+def mount_iPhone(mount_point: Path):
+    if mount_point.exists():
+        print(f"[pyphotobackups] {str(mount_point)} already exists. remove it and run again")
         abort()
-    iPhone_path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ifuse", str(iPhone_path)])
+    mount_point.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ifuse", str(mount_point)])
 
 
-def unmount_iPhone():
-    iPhone_path = Path("/tmp/iPhone")
-    subprocess.run(["umount", str(iPhone_path)])
-    iPhone_path.rmdir()
+def unmount_iPhone(mount_point: Path):
+    subprocess.run(["umount", str(mount_point)])
+    mount_point.rmdir()
 
 
 def process_dir_recursively(

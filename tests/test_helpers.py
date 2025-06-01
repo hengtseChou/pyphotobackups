@@ -123,24 +123,24 @@ def test_is_ifuse_not_installed(mock_which):
 
 @patch("subprocess.run")
 def test_mount_iPhone(mock_subprocess_run):
-    iphone_path = Path("/tmp/iPhone")
-    if iphone_path.exists():
-        shutil.rmtree(iphone_path)
+    mount_point = Path("/tmp/pyphotobackups/test")
+    if mount_point.exists():
+        shutil.rmtree(mount_point)
 
-    mount_iPhone()
-    assert iphone_path.exists()
-    mock_subprocess_run.assert_called_once_with(["ifuse", str(iphone_path)])
-    shutil.rmtree(iphone_path)
+    mount_iPhone(mount_point)
+    assert mount_point.exists()
+    mock_subprocess_run.assert_called_once_with(["ifuse", str(mount_point)])
+    shutil.rmtree(mount_point)
 
 
 @patch("subprocess.run")
 def test_unmount_iPhone(mock_subprocess_run):
-    iphone_path = Path("/tmp/iPhone")
-    iphone_path.mkdir(parents=True, exist_ok=True)
+    mount_point = Path("/tmp/pyphotobackups/test")
+    mount_point.mkdir(parents=True, exist_ok=True)
 
-    unmount_iPhone()
-    assert not iphone_path.exists()
-    mock_subprocess_run.assert_called_once_with(["umount", str(iphone_path)])
+    unmount_iPhone(mount_point)
+    assert not mount_point.exists()
+    mock_subprocess_run.assert_called_once_with(["umount", str(mount_point)])
 
 
 def test_get_directory_size(temp_dir):

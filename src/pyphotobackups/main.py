@@ -40,15 +40,16 @@ def main():
     start = datetime.now()
     print("[pyphotobackups] starting a new backup")
     print(f"dest    : {str(dest)}")
-    source = Path("/tmp/iPhone/DCIM")
-    mount_iPhone()
+    mount_point = Path("/tmp/pyphotobackups/iPhone")
+    mount_iPhone(mount_point)
+    source = mount_point / "DCIM"
     exit_code, new_sync, file_size_increment = process_dir_recursively(source, dest, conn, 0, 0)
     end = datetime.now()
     elapsed_time = end - start
     minutes, seconds = divmod(int(elapsed_time.total_seconds()), 60)
     print("[pyphotobackups] calculating space usage...")
     dest_size = get_directory_size(dest)
-    unmount_iPhone()
+    unmount_iPhone(mount_point)
 
     cursor = conn.cursor()
     cursor.execute(
