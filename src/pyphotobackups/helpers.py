@@ -60,6 +60,7 @@ def get_file_timestamp(file_path: Path) -> datetime:
     mtime = file_path.stat().st_mtime
     return datetime.fromtimestamp(mtime)
 
+
 def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM sync WHERE source = ?", (source,))
@@ -122,7 +123,7 @@ def process_dir_recursively(
             desc=f"syncing : {source_dir.name:<18} |",
             bar_format="{desc} {bar} [{n_fmt}/{total_fmt}]",
             ncols=80,
-            miniters=1
+            miniters=1,
         ):
             source = str(Path(*file_path.parts[-2:]))
             if is_processed_source(source, conn):
