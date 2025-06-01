@@ -1,6 +1,5 @@
-import shutil
+import subprocess
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,7 +70,7 @@ def test_init_db(temp_dir):
     conn.close()
 
 
-@patch("subprocess.run")
+@patch("pyphotobackups.helpers.subprocess.run")
 def test_get_serial_number(mock_subprocess_run):
     mock_subprocess_run.return_value = MagicMock(stdout="123456789\n")
     serial_number = get_serial_number()
@@ -121,21 +120,67 @@ def test_is_ifuse_not_installed(mock_which):
     mock_which.assert_called_once_with("ifuse")
 
 
-@patch("subprocess.run")
-def test_mount_iPhone(mock_subprocess_run):
-    mount_point = Path("/tmp/pyphotobackups/test")
-    if mount_point.exists():
-        shutil.rmtree(mount_point)
+@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
+@patch("pyphotobackups.helpers.subprocess.run")
+def test_mount_iPhone_already_exists(mock_subprocess_run, mock_abort, tmp_path):
+    # Simulate the mount point already existing
+    mount_point = tmp_path / "pyphotobackups" / "test"
+    mount_point.mkdir(parents=True, exist_ok=True)
 
+    # Call the function
+    with pytest.raises(SystemExit):
+        mount_iPhone(mount_point)
+
+    # Assertions
+    mock_abort.assert_called_once()  # Ensure abort() was called
+    assert mount_point.exists()  # The directory should still exist
+    mock_subprocess_run.assert_not_called()  # subprocess.run should not be called
+
+
+@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
+@patch("pyphotobackups.helpers.subprocess.run")
+def test_mount_iPhone_success(mock_subprocess_run, mock_abort, tmp_path):
+    # Simulate a successful `ifuse` command
+    mock_subprocess_run.return_value = MagicMock(returncode=0)
+    mount_point = tmp_path / "pyphotobackups" / "test"
+
+    # Call the function
     mount_iPhone(mount_point)
-    assert mount_point.exists()
-    mock_subprocess_run.assert_called_once_with(["ifuse", str(mount_point)])
-    shutil.rmtree(mount_point)
+
+    # Assertions
+    assert mount_point.exists()  # The directory should be created
+    mock_subprocess_run.assert_called_once_with(
+        ["ifuse", str(mount_point)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    mock_abort.assert_not_called()  # abort() should not be called
 
 
-@patch("subprocess.run")
-def test_unmount_iPhone(mock_subprocess_run):
-    mount_point = Path("/tmp/pyphotobackups/test")
+@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
+@patch("pyphotobackups.helpers.subprocess.run")
+def test_mount_iPhone_not_connected(mock_subprocess_run, mock_abort, tmp_path):
+    # Simulate the `ifuse` command failing (return code 1)
+    mock_subprocess_run.return_value = MagicMock(returncode=1)
+    mount_point = tmp_path / "pyphotobackups" / "test"
+
+    # Call the function
+    with pytest.raises(SystemExit):
+        mount_iPhone(mount_point)
+
+    # Assertions
+    mock_abort.assert_called_once()  # Ensure abort() was called
+    assert not mount_point.exists()  # The directory should be removed
+    mock_subprocess_run.assert_called_once_with(
+        ["ifuse", str(mount_point)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+@patch("pyphotobackups.helpers.subprocess.run")
+def test_unmount_iPhone(mock_subprocess_run, tmp_path):
+    mount_point = tmp_path / "pyphotobackups" / "test"
     mount_point.mkdir(parents=True, exist_ok=True)
 
     unmount_iPhone(mount_point)

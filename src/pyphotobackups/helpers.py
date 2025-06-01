@@ -105,7 +105,13 @@ def mount_iPhone(mount_point: Path):
         print(f"[pyphotobackups] {str(mount_point)} already exists. remove it and run again")
         abort()
     mount_point.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ifuse", str(mount_point)])
+    run = subprocess.run(
+        ["ifuse", str(mount_point)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    if run.returncode == 1:
+        print("[pyphotobackups] iPhone is not connected")
+        mount_point.rmdir()
+        abort()
 
 
 def unmount_iPhone(mount_point: Path):
