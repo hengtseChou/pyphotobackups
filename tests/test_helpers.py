@@ -20,19 +20,14 @@ from pyphotobackups.helpers import (
 )
 
 
-@pytest.fixture
-def temp_dir(tmp_path):
-    return tmp_path
-
-
-def test_get_db_path(temp_dir):
-    db_path = get_db_path(temp_dir)
-    assert db_path == temp_dir / ".pyphotobackups" / "db"
+def test_get_db_path(tmp_path):
+    db_path = get_db_path(tmp_path)
+    assert db_path == tmp_path / ".pyphotobackups" / "db"
     assert db_path.parent.exists()
 
 
-def test_init_db(temp_dir):
-    conn = init_db(temp_dir)
+def test_init_db(tmp_path):
+    conn = init_db(tmp_path)
     cursor = conn.cursor()
 
     # Check if tables exist
@@ -80,16 +75,16 @@ def test_get_serial_number(mock_subprocess_run):
     )
 
 
-def test_get_file_timestamp(temp_dir):
-    test_file = temp_dir / "test.txt"
+def test_get_file_timestamp(tmp_path):
+    test_file = tmp_path / "test.txt"
     test_file.touch()
     timestamp = get_file_timestamp(test_file)
     assert isinstance(timestamp, datetime)
     assert timestamp == datetime.fromtimestamp(test_file.stat().st_mtime)
 
 
-def test_is_processed_source(temp_dir):
-    conn = init_db(temp_dir)
+def test_is_processed_source(tmp_path):
+    conn = init_db(tmp_path)
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO sync (source, dest, timestamp, inserted_at) VALUES (?, ?, ?, ?)",
@@ -123,54 +118,45 @@ def test_is_ifuse_not_installed(mock_which):
 @patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_mount_iPhone_already_exists(mock_subprocess_run, mock_abort, tmp_path):
-    # Simulate the mount point already existing
-    mount_point = tmp_path / "pyphotobackups" / "test"
+    mount_point = tmp_path / "mount" / "point"
     mount_point.mkdir(parents=True, exist_ok=True)
 
-    # Call the function
     with pytest.raises(SystemExit):
         mount_iPhone(mount_point)
 
-    # Assertions
-    mock_abort.assert_called_once()  # Ensure abort() was called
-    assert mount_point.exists()  # The directory should still exist
-    mock_subprocess_run.assert_not_called()  # subprocess.run should not be called
+    mock_abort.assert_called_once()
+    assert mount_point.exists()
+    mock_subprocess_run.assert_not_called()
 
 
-@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
+@patch("pyphotobackups.helpers.abort")
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_mount_iPhone_success(mock_subprocess_run, mock_abort, tmp_path):
-    # Simulate a successful `ifuse` command
     mock_subprocess_run.return_value = MagicMock(returncode=0)
-    mount_point = tmp_path / "pyphotobackups" / "test"
+    mount_point = tmp_path / "mount" / "point"
 
-    # Call the function
     mount_iPhone(mount_point)
 
-    # Assertions
-    assert mount_point.exists()  # The directory should be created
+    assert mount_point.exists()
     mock_subprocess_run.assert_called_once_with(
         ["ifuse", str(mount_point)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    mock_abort.assert_not_called()  # abort() should not be called
+    mock_abort.assert_not_called()
 
 
 @patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_mount_iPhone_not_connected(mock_subprocess_run, mock_abort, tmp_path):
-    # Simulate the `ifuse` command failing (return code 1)
     mock_subprocess_run.return_value = MagicMock(returncode=1)
-    mount_point = tmp_path / "pyphotobackups" / "test"
+    mount_point = tmp_path / "mount" / "point"
 
-    # Call the function
     with pytest.raises(SystemExit):
         mount_iPhone(mount_point)
 
-    # Assertions
-    mock_abort.assert_called_once()  # Ensure abort() was called
-    assert not mount_point.exists()  # The directory should be removed
+    mock_abort.assert_called_once()
+    assert not mount_point.exists()
     mock_subprocess_run.assert_called_once_with(
         ["ifuse", str(mount_point)],
         stdout=subprocess.DEVNULL,
@@ -180,7 +166,7 @@ def test_mount_iPhone_not_connected(mock_subprocess_run, mock_abort, tmp_path):
 
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_unmount_iPhone(mock_subprocess_run, tmp_path):
-    mount_point = tmp_path / "pyphotobackups" / "test"
+    mount_point = tmp_path / "mount" / "point"
     mount_point.mkdir(parents=True, exist_ok=True)
 
     unmount_iPhone(mount_point)
@@ -188,10 +174,10 @@ def test_unmount_iPhone(mock_subprocess_run, tmp_path):
     mock_subprocess_run.assert_called_once_with(["umount", str(mount_point)])
 
 
-def test_get_directory_size(temp_dir):
-    test_file = temp_dir / "test.txt"
+def test_get_directory_size(tmp_path):
+    test_file = tmp_path / "test.txt"
     test_file.write_text("a" * 1024)  # 1 KB
-    size = get_directory_size(temp_dir)
+    size = get_directory_size(tmp_path)
     assert size == 1024
 
 
@@ -204,10 +190,10 @@ def test_convert_size_to_readable():
     assert convert_size_to_readable(1099511627776) == "1.0T"
 
 
-def test_process_dir_recursively(temp_dir):
-    source_dir = temp_dir / "source"
+def test_process_dir_recursively(tmp_path):
+    source_dir = tmp_path / "source"
     source_sub_dir = source_dir / "sub"
-    target_dir = temp_dir / "target"
+    target_dir = tmp_path / "target"
     source_dir.mkdir()
     source_sub_dir.mkdir()
     target_dir.mkdir()
@@ -215,7 +201,7 @@ def test_process_dir_recursively(temp_dir):
     (source_dir / "file1.txt").write_text("content1")
     (source_sub_dir / "file2.txt").write_text("content2")
 
-    conn = init_db(temp_dir)
+    conn = init_db(tmp_path)
     exit_code, counter, size_increment = process_dir_recursively(source_dir, target_dir, conn, 0, 0)
 
     assert exit_code == 0
