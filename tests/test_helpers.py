@@ -23,6 +23,7 @@ from pyphotobackups.helpers import (
 )
 
 
+# Lock File Management
 def test_create_lock_file(tmp_path):
     lock_file = tmp_path / "pyphotobackups.lock"
     create_lock_file(tmp_path)
@@ -46,6 +47,7 @@ def test_cleanup_lock_file(tmp_path):
     assert lock_file.exists() is False
 
 
+# Database Management
 def test_get_db_path(tmp_path):
     db_path = get_db_path(tmp_path)
     assert db_path == tmp_path / ".pyphotobackups" / "db"
@@ -91,24 +93,6 @@ def test_init_db(tmp_path):
     conn.close()
 
 
-@patch("pyphotobackups.helpers.subprocess.run")
-def test_get_serial_number(mock_subprocess_run):
-    mock_subprocess_run.return_value = MagicMock(stdout="123456789\n")
-    serial_number = get_serial_number()
-    assert serial_number == "123456789"
-    mock_subprocess_run.assert_called_once_with(
-        ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
-    )
-
-
-def test_get_file_timestamp(tmp_path):
-    test_file = tmp_path / "test.txt"
-    test_file.touch()
-    timestamp = get_file_timestamp(test_file)
-    assert isinstance(timestamp, datetime)
-    assert timestamp == datetime.fromtimestamp(test_file.stat().st_mtime)
-
-
 def test_is_processed_source(tmp_path):
     conn = init_db(tmp_path)
     cursor = conn.cursor()
@@ -124,11 +108,7 @@ def test_is_processed_source(tmp_path):
     conn.close()
 
 
-def test_abort():
-    with pytest.raises(SystemExit):
-        abort()
-
-
+# iPhone connection
 @patch("shutil.which", return_value="/usr/bin/ifuse")
 def test_is_ifuse_installed(mock_which):
     assert is_ifuse_installed() is True
@@ -200,11 +180,30 @@ def test_unmount_iPhone(mock_subprocess_run, tmp_path):
     mock_subprocess_run.assert_called_once_with(["umount", str(mount_point)])
 
 
+@patch("pyphotobackups.helpers.subprocess.run")
+def test_get_serial_number(mock_subprocess_run):
+    mock_subprocess_run.return_value = MagicMock(stdout="123456789\n")
+    serial_number = get_serial_number()
+    assert serial_number == "123456789"
+    mock_subprocess_run.assert_called_once_with(
+        ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
+    )
+
+
+# Directory and File Operations
 def test_get_directory_size(tmp_path):
     test_file = tmp_path / "test.txt"
     test_file.write_text("a" * 1024)  # 1 KB
     size = get_directory_size(tmp_path)
     assert size == 1024
+
+
+def test_get_file_timestamp(tmp_path):
+    test_file = tmp_path / "test.txt"
+    test_file.touch()
+    timestamp = get_file_timestamp(test_file)
+    assert isinstance(timestamp, datetime)
+    assert timestamp == datetime.fromtimestamp(test_file.stat().st_mtime)
 
 
 def test_convert_size_to_readable():
@@ -234,3 +233,9 @@ def test_process_dir_recursively(tmp_path):
     assert counter == 2
     assert size_increment == 16
     conn.close()
+
+
+# Miscellaneous
+def test_abort():
+    with pytest.raises(SystemExit):
+        abort()

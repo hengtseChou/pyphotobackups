@@ -10,6 +10,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 
+# Lock File Management
 def create_lock_file(dir: Path):
     """
     Create a lock file to ensure there is only one process running.
@@ -31,6 +32,7 @@ def cleanup_lock_file(dir: Path):
         lock_file.unlink()
 
 
+# Database Management
 def get_db_path(target_dir: Path) -> Path:
     """
     This function defines the path of the db file to be stored, under the dest dir.
@@ -78,24 +80,6 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
     return conn
 
 
-def get_serial_number():
-    """
-    Retrieve the serial number from a mounted iPhone.
-    """
-    result = subprocess.run(
-        ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
-    )
-    return result.stdout.strip()
-
-
-def get_file_timestamp(file_path: Path) -> datetime:
-    """
-    Retrieve the modification time of a file.
-    """
-    mtime = file_path.stat().st_mtime
-    return datetime.fromtimestamp(mtime)
-
-
 def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
     """
     Check if a file from source has already been processed by its path (as in format `100APPLE/IMAGE_001.png` etc.)
@@ -107,14 +91,7 @@ def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
     return count > 0
 
 
-def abort():
-    """
-    Abort the program with exit code 1.
-    """
-    print("[pyphotobackups] aborting")
-    sys.exit(1)
-
-
+# iPhone connection
 def is_ifuse_installed():
     if shutil.which("ifuse"):
         return True
@@ -138,6 +115,53 @@ def mount_iPhone(mount_point: Path):
 def unmount_iPhone(mount_point: Path):
     subprocess.run(["umount", str(mount_point)])
     mount_point.rmdir()
+
+
+def get_serial_number():
+    """
+    Retrieve the serial number from a mounted iPhone.
+    """
+    result = subprocess.run(
+        ["ideviceinfo", "-k", "SerialNumber"], capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
+
+
+# Directory and File Operations
+def get_directory_size(path: Path) -> int:
+    total_size = 0
+    for file in path.rglob("*"):
+        if file.is_file():
+            total_size += file.stat().st_size
+    return total_size
+
+
+def get_file_timestamp(file_path: Path) -> datetime:
+    """
+    Retrieve the modification time of a file.
+    """
+    mtime = file_path.stat().st_mtime
+    return datetime.fromtimestamp(mtime)
+
+
+def convert_size_to_readable(size: int) -> str:
+    """
+    Convert a size in bytes to a human-readable format (e.g., KB, MB, GB).
+
+    Args:
+        size (int): The size in bytes.
+
+    Returns:
+        str: The size in a human-readable format (e.g., "1.0K", "2.3M").
+    """
+    num = float(size)
+    if num == 0:
+        return "0B"
+    for unit in ["B", "K", "M", "G"]:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}"
+        num /= 1024.0
+    return f"{num:.1f}T"
 
 
 def process_dir_recursively(
@@ -234,29 +258,10 @@ def process_dir_recursively(
     return exit_code, counter, size_increment
 
 
-def get_directory_size(path: Path) -> int:
-    total_size = 0
-    for file in path.rglob("*"):
-        if file.is_file():
-            total_size += file.stat().st_size
-    return total_size
-
-
-def convert_size_to_readable(size: int) -> str:
+# Miscellaneous
+def abort():
     """
-    Convert a size in bytes to a human-readable format (e.g., KB, MB, GB).
-
-    Args:
-        size (int): The size in bytes.
-
-    Returns:
-        str: The size in a human-readable format (e.g., "1.0K", "2.3M").
+    Abort the program with exit code 1.
     """
-    num = float(size)
-    if num == 0:
-        return "0B"
-    for unit in ["B", "K", "M", "G"]:
-        if abs(num) < 1024.0:
-            return f"{num:3.1f}{unit}"
-        num /= 1024.0
-    return f"{num:.1f}T"
+    print("[pyphotobackups] aborting")
+    sys.exit(1)

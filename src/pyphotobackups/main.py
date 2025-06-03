@@ -95,7 +95,3 @@ def main():
     except Exception as e:
         print(f"[pyphotobackups] unexpected error: {str(e)} ")
         abort()
-
-
-if __name__ == "__main__":
-    main()
