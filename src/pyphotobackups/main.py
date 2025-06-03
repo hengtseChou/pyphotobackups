@@ -5,18 +5,21 @@ from pathlib import Path
 
 from .helpers import (
     abort,
+    cleanup_lock_file,
     convert_size_to_readable,
+    create_lock_file,
     get_directory_size,
     get_serial_number,
     init_db,
     is_ifuse_installed,
+    is_lock_file_exists,
     mount_iPhone,
     process_dir_recursively,
     unmount_iPhone,
 )
 
 
-def main():
+def cli():
     parser = argparse.ArgumentParser(
         description="CLI tool to sync photos from your iPhone and organize them into YYYY-MM folders."
     )
@@ -35,12 +38,19 @@ def main():
     if not is_ifuse_installed():
         print("[pyphotobackups] command ifuse not found. make sure it's installed on your system")
         abort()
+    root_dir = Path("/tmp/pyphotobackups")
+    root_dir.mkdir(exist_ok=True)
+    if is_lock_file_exists(root_dir):
+        print("[pyphotobackups] an ongoing pyphotobackups process detected")
+        print("[pyphotobackups] only one process is allowed at a time")
+        abort()
+    create_lock_file(root_dir)
 
     conn = init_db(dest)
     start = datetime.now()
     print("[pyphotobackups] starting a new backup")
     print(f"dest    : {str(dest)}")
-    mount_point = Path("/tmp/pyphotobackups/iPhone")
+    mount_point = root_dir / "iPhone"
     mount_iPhone(mount_point)
     source = mount_point / "DCIM"
     exit_code, new_sync, file_size_increment = process_dir_recursively(source, dest, conn, 0, 0)
@@ -50,6 +60,7 @@ def main():
     print("[pyphotobackups] calculating space usage...")
     dest_size = get_directory_size(dest)
     unmount_iPhone(mount_point)
+    cleanup_lock_file(root_dir)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -76,6 +87,14 @@ def main():
     print(f"new backups       : {new_sync} ({convert_size_to_readable(file_size_increment)})")
     print(f"total space usage : {convert_size_to_readable(dest_size)}")
     print(f"elapsed time      : {minutes} min {seconds} sec")
+
+
+def main():
+    try:
+        cli()
+    except Exception as e:
+        print(f"[pyphotobackups] unexpected error: {str(e)} ")
+        abort()
 
 
 if __name__ == "__main__":

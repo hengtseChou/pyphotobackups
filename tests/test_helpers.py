@@ -6,18 +6,44 @@ import pytest
 
 from pyphotobackups.helpers import (
     abort,
+    cleanup_lock_file,
     convert_size_to_readable,
+    create_lock_file,
     get_db_path,
     get_directory_size,
     get_file_timestamp,
     get_serial_number,
     init_db,
     is_ifuse_installed,
+    is_lock_file_exists,
     is_processed_source,
     mount_iPhone,
     process_dir_recursively,
     unmount_iPhone,
 )
+
+
+def test_create_lock_file(tmp_path):
+    lock_file = tmp_path / "pyphotobackups.lock"
+    create_lock_file(tmp_path)
+    assert lock_file.exists()
+    lock_file.unlink()
+
+
+def test_is_lock_file_exists(tmp_path):
+    lock_file = tmp_path / "pyphotobackups.lock"
+    lock_file.touch()
+    assert is_lock_file_exists(tmp_path) is True
+
+    lock_file.unlink()
+    assert is_lock_file_exists(tmp_path) is False
+
+
+def test_cleanup_lock_file(tmp_path):
+    lock_file = tmp_path / "pyphotobackups.lock"
+    lock_file.touch()
+    cleanup_lock_file(tmp_path)
+    assert lock_file.exists() is False
 
 
 def test_get_db_path(tmp_path):

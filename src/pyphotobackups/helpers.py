@@ -10,6 +10,27 @@ from pathlib import Path
 from tqdm import tqdm
 
 
+def create_lock_file(dir: Path):
+    """
+    Create a lock file to ensure there is only one process running.
+    """
+    lock_file = dir / "pyphotobackups.lock"
+    lock_file.touch()
+
+
+def is_lock_file_exists(dir: Path):
+    lock_file = dir / "pyphotobackups.lock"
+    if lock_file.exists():
+        return True
+    return False
+
+
+def cleanup_lock_file(dir: Path):
+    lock_file = dir / "pyphotobackups.lock"
+    if lock_file.exists():
+        lock_file.unlink()
+
+
 def get_db_path(target_dir: Path) -> Path:
     """
     This function defines the path of the db file to be stored, under the dest dir.
@@ -188,12 +209,11 @@ def process_dir_recursively(
             except OSError as e:
                 if e.errno == errno.EACCES:
                     print("[pyphotobackups] permission denied")
-                elif e.errno == errno.ENOSPC:
+                    abort()
+                if e.errno == errno.ENOSPC:
                     print("[pyphotobackups] no enough space in destination directory")
-                else:
-                    print(f"[pyphotobackups] unexpected error: {str(e)} ")
-                abort()
-
+                    abort()
+                raise e
             counter += 1
             size_increment += file_path.stat().st_size
             cursor = conn.cursor()
