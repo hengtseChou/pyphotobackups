@@ -3,11 +3,14 @@ import os
 import shutil
 import sqlite3
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
 from tqdm import tqdm
+
+
+class Abort(Exception):
+    pass
 
 
 # Lock File Management
@@ -98,18 +101,24 @@ def is_ifuse_installed():
     return False
 
 
+def is_iPhone_mounted():
+    with open("/proc/mounts", "r") as mounts:
+        for line in mounts:
+            if "ifuse" in line:
+                return True
+    return False
+
+
 def mount_iPhone(mount_point: Path):
-    if mount_point.exists():
-        print(f"[pyphotobackups] {str(mount_point)} already exists. remove it and run again")
-        abort()
+    if is_iPhone_mounted():
+        raise Abort("iPhone is already mounted")
     mount_point.mkdir(parents=True, exist_ok=True)
     run = subprocess.run(
         ["ifuse", str(mount_point)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
     if run.returncode == 1:
-        print("[pyphotobackups] iPhone is not connected")
         mount_point.rmdir()
-        abort()
+        raise Abort("iPhone is not connected")
 
 
 def unmount_iPhone(mount_point: Path):
@@ -190,6 +199,7 @@ def process_dir_recursively(
 
     Notes:
         - Copies files to a subdirectory based on their timestamp.
+        - If file with the same name exists, an increment suffix will be appended.
         - Skips already processed files and handles errors like permission issues or insufficient space.
         - Stops and returns if interrupted (via KeyboardInterrupt).
     """
@@ -225,7 +235,15 @@ def process_dir_recursively(
             target_subdir = target_dir / year_month
             target_subdir.mkdir(parents=True, exist_ok=True)
             target_file_path = target_subdir / file_name
+            # Ensure unique file name by incrementing if a duplicate exists
+            duplicates = 1
+            while target_file_path.exists():
+                stem, suffix = file_name.rsplit(".", 1)
+                file_name = f"{stem}_{duplicates}.{suffix}"
+                target_file_path = target_subdir / file_name
+                duplicates += 1
             target_file_path_tmp = target_subdir / f"{file_name}.tmp"
+
             try:
                 # prevents incomplete files by copying to a temporary file first
                 shutil.copy2(file_path, target_file_path_tmp)
@@ -233,11 +251,12 @@ def process_dir_recursively(
             except OSError as e:
                 if e.errno == errno.EACCES:
                     print("[pyphotobackups] permission denied")
-                    abort()
+                    raise Abort
                 if e.errno == errno.ENOSPC:
                     print("[pyphotobackups] no enough space in destination directory")
-                    abort()
+                    raise Abort
                 raise e
+
             counter += 1
             size_increment += file_path.stat().st_size
             cursor = conn.cursor()
@@ -252,16 +271,9 @@ def process_dir_recursively(
             )
             conn.commit()
             cursor.close()
+
     except KeyboardInterrupt:
         print("[pyphotobackups] interrupted! saving current progress...")
         exit_code = 1
+
     return exit_code, counter, size_increment
-
-
-# Miscellaneous
-def abort():
-    """
-    Abort the program with exit code 1.
-    """
-    print("[pyphotobackups] aborting")
-    sys.exit(1)

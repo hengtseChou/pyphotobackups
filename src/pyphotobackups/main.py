@@ -1,10 +1,12 @@
 import argparse
+import os
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 from .helpers import (
-    abort,
+    Abort,
     cleanup_lock_file,
     convert_size_to_readable,
     create_lock_file,
@@ -18,6 +20,9 @@ from .helpers import (
     unmount_iPhone,
 )
 
+ROOT = Path("/tmp/pyphotobackups")
+MOUNT_POINT = ROOT / "iPhone"
+
 
 def cli():
     parser = argparse.ArgumentParser(
@@ -30,37 +35,30 @@ def cli():
     args = parser.parse_args()
     dest = Path(args.dest)
     if not dest.exists():
-        print("[pyphotobackups] destination does not exist")
-        abort()
+        raise Abort("destination does not exist")
     if not dest.is_dir():
-        print("[pyphotobackups] destination is not a directory")
-        abort()
+        raise Abort("destination is not a directory")
     if not is_ifuse_installed():
-        print("[pyphotobackups] command ifuse not found. make sure it's installed on your system")
-        abort()
-    root_dir = Path("/tmp/pyphotobackups")
-    root_dir.mkdir(exist_ok=True)
-    if is_lock_file_exists(root_dir):
-        print("[pyphotobackups] an ongoing pyphotobackups process detected")
-        print("[pyphotobackups] only one process is allowed at a time")
-        abort()
-    create_lock_file(root_dir)
+        raise Abort("command ifuse not found. make sure it's installed on your system")
+    ROOT.mkdir(exist_ok=True)
+    if is_lock_file_exists(ROOT):
+        raise Abort(
+            "an ongoing pyphotobackups process detected. only one process is allowed at a time"
+        )
+    create_lock_file(ROOT)
+    mount_iPhone(MOUNT_POINT)
 
     conn = init_db(dest)
     start = datetime.now()
     print("[pyphotobackups] starting a new backup")
     print(f"dest    : {str(dest)}")
-    mount_point = root_dir / "iPhone"
-    mount_iPhone(mount_point)
-    source = mount_point / "DCIM"
+    source = MOUNT_POINT / "DCIM"
     exit_code, new_sync, file_size_increment = process_dir_recursively(source, dest, conn, 0, 0)
     end = datetime.now()
     elapsed_time = end - start
     minutes, seconds = divmod(int(elapsed_time.total_seconds()), 60)
     print("[pyphotobackups] calculating space usage...")
     dest_size = get_directory_size(dest)
-    unmount_iPhone(mount_point)
-    cleanup_lock_file(root_dir)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -79,6 +77,7 @@ def cli():
     )
     conn.commit()
     cursor.close()
+    cleanup()
 
     if exit_code == 1:
         print("[pyphotobackups] backup stopped")
@@ -89,9 +88,30 @@ def cli():
     print(f"elapsed time      : {minutes} min {seconds} sec")
 
 
+def cleanup():
+    cleanup_lock_file(ROOT)
+    if MOUNT_POINT.exists() and os.path.ismount(MOUNT_POINT):
+        unmount_iPhone(MOUNT_POINT)
+    if ROOT.exists():
+        ROOT.rmdir()
+
+
+def abort():
+    """
+    Abort the program with exit code 1.
+    """
+    print("[pyphotobackups] aborting")
+    sys.exit(1)
+
+
 def main():
     try:
         cli()
+    except Abort as e:
+        print(f"[pyphotobackups] {str(e)}")
+        cleanup()
+        abort()
     except Exception as e:
         print(f"[pyphotobackups] unexpected error: {str(e)} ")
+        cleanup()
         abort()

@@ -1,11 +1,12 @@
+import builtins
 import subprocess
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from pyphotobackups.helpers import (
-    abort,
+    Abort,
     cleanup_lock_file,
     convert_size_to_readable,
     create_lock_file,
@@ -15,6 +16,7 @@ from pyphotobackups.helpers import (
     get_serial_number,
     init_db,
     is_ifuse_installed,
+    is_iPhone_mounted,
     is_lock_file_exists,
     is_processed_source,
     mount_iPhone,
@@ -54,18 +56,25 @@ def test_get_db_path(tmp_path):
     assert db_path.parent.exists()
 
 
-def test_init_db(tmp_path):
+def test_init_db_sync_table_exists(tmp_path):
     conn = init_db(tmp_path)
     cursor = conn.cursor()
-
-    # Check if tables exist
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sync'")
     assert cursor.fetchone() is not None
+    conn.close()
 
+
+def test_init_db_run_tables_exists(tmp_path):
+    conn = init_db(tmp_path)
+    cursor = conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='run'")
     assert cursor.fetchone() is not None
+    conn.close()
 
-    # Check columns for 'sync' table
+
+def test_init_db_sync_table_columns(tmp_path):
+    conn = init_db(tmp_path)
+    cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(sync)")
     sync_columns = {row[1]: row[2] for row in cursor.fetchall()}
     assert sync_columns == {
@@ -74,8 +83,12 @@ def test_init_db(tmp_path):
         "timestamp": "TIMESTAMP",
         "inserted_at": "TIMESTAMP",
     }
+    conn.close()
 
-    # Check columns for 'run' table
+
+def test_init_db_run_table_columns(tmp_path):
+    conn = init_db(tmp_path)
+    cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(run)")
     run_columns = {row[1]: row[2] for row in cursor.fetchall()}
     assert run_columns == {
@@ -89,11 +102,10 @@ def test_init_db(tmp_path):
         "dest_size_increment": "TEXT",
         "new_sync": "INTEGER",
     }
-
     conn.close()
 
 
-def test_is_processed_source(tmp_path):
+def test_is_processed_source_true(tmp_path):
     conn = init_db(tmp_path)
     cursor = conn.cursor()
     cursor.execute(
@@ -103,7 +115,14 @@ def test_is_processed_source(tmp_path):
     conn.commit()
 
     assert is_processed_source("source1", conn) is True
-    assert is_processed_source("source2", conn) is False
+
+    conn.close()
+
+
+def test_is_processed_source_false(tmp_path):
+    conn = init_db(tmp_path)
+
+    assert is_processed_source("sourceq", conn) is False
 
     conn.close()
 
@@ -121,23 +140,20 @@ def test_is_ifuse_not_installed(mock_which):
     mock_which.assert_called_once_with("ifuse")
 
 
-@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
+def test_iPhone_mounted():
+    mock_data = "something /mnt/iphone ifuse rw\n"
+    with patch.object(builtins, "open", mock_open(read_data=mock_data)):
+        assert is_iPhone_mounted() is True
+
+
+def test_iPhone_not_mounted():
+    mock_data = "something /mnt/usb vfat rw\n"
+    with patch.object(builtins, "open", mock_open(read_data=mock_data)):
+        assert is_iPhone_mounted() is False
+
+
 @patch("pyphotobackups.helpers.subprocess.run")
-def test_mount_iPhone_already_exists(mock_subprocess_run, mock_abort, tmp_path):
-    mount_point = tmp_path / "mount" / "point"
-    mount_point.mkdir(parents=True, exist_ok=True)
-
-    with pytest.raises(SystemExit):
-        mount_iPhone(mount_point)
-
-    mock_abort.assert_called_once()
-    assert mount_point.exists()
-    mock_subprocess_run.assert_not_called()
-
-
-@patch("pyphotobackups.helpers.abort")
-@patch("pyphotobackups.helpers.subprocess.run")
-def test_mount_iPhone_success(mock_subprocess_run, mock_abort, tmp_path):
+def test_mount_iPhone_success(mock_subprocess_run, tmp_path):
     mock_subprocess_run.return_value = MagicMock(returncode=0)
     mount_point = tmp_path / "mount" / "point"
 
@@ -149,19 +165,16 @@ def test_mount_iPhone_success(mock_subprocess_run, mock_abort, tmp_path):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    mock_abort.assert_not_called()
 
 
-@patch("pyphotobackups.helpers.abort", side_effect=SystemExit)
 @patch("pyphotobackups.helpers.subprocess.run")
-def test_mount_iPhone_not_connected(mock_subprocess_run, mock_abort, tmp_path):
+def test_mount_iPhone_not_connected(mock_subprocess_run, tmp_path):
     mock_subprocess_run.return_value = MagicMock(returncode=1)
     mount_point = tmp_path / "mount" / "point"
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(Abort):
         mount_iPhone(mount_point)
 
-    mock_abort.assert_called_once()
     assert not mount_point.exists()
     mock_subprocess_run.assert_called_once_with(
         ["ifuse", str(mount_point)],
@@ -233,9 +246,3 @@ def test_process_dir_recursively(tmp_path):
     assert counter == 2
     assert size_increment == 16
     conn.close()
-
-
-# Miscellaneous
-def test_abort():
-    with pytest.raises(SystemExit):
-        abort()
