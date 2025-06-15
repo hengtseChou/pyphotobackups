@@ -2,7 +2,7 @@
 
 ![screenshot1](https://raw.githubusercontent.com/hengtseChou/pyphotobackups/refs/heads/main/.github/assets/screenshot1.png)
 
-A very simple CLI tool to sync photos and videos from your iPhone to your drive, and organize by the time you took them.
+A very simple command line tool to sync photos and videos from your iPhone to your drive, and organize by the time you took them.
 
 ## Feature
 
