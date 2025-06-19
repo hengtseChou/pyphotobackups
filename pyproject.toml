@@ -1,6 +1,6 @@
 [project]
 name = "pyphotobackups"
-version = "0.1.8"
+version = "0.1.9"
 description = "command line tool to sync photos from your iPhone and organize them into YYYY-MM folders."
 readme = "README.md"
 requires-python = ">=3.9"
