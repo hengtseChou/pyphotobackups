@@ -51,6 +51,7 @@ def cli():
     conn = init_db(dest)
     start = datetime.now()
     print("[pyphotobackups] starting a new backup")
+    print(f"[pyphotobackups] iPhone mounted at {str(MOUNT_POINT)}. do not remove the connection!")
     print(f"dest    : {str(dest)}")
     source = MOUNT_POINT / "DCIM"
     exit_code, new_sync, file_size_increment = process_dir_recursively(source, dest, conn, 0, 0)
@@ -83,6 +84,7 @@ def cli():
         print("[pyphotobackups] backup stopped")
     else:
         print("[pyphotobackups] backup completed")
+    print("[pyphotobackups] you can now safely remove your iPhone")
     print(f"new backups       : {new_sync} ({convert_size_to_readable(file_size_increment)})")
     print(f"total space usage : {convert_size_to_readable(dest_size)}")
     print(f"elapsed time      : {minutes} min {seconds} sec")

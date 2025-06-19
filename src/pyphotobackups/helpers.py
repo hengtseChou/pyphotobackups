@@ -14,7 +14,7 @@ class Abort(Exception):
 
 
 # Lock File Management
-def create_lock_file(dir: Path):
+def create_lock_file(dir: Path) -> None:
     """
     Create a lock file to ensure there is only one process running.
     """
@@ -22,7 +22,7 @@ def create_lock_file(dir: Path):
     lock_file.touch()
 
 
-def is_lock_file_exists(dir: Path):
+def is_lock_file_exists(dir: Path) -> bool:
     lock_file = dir / "pyphotobackups.lock"
     if lock_file.exists():
         return True
@@ -95,13 +95,13 @@ def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
 
 
 # iPhone connection
-def is_ifuse_installed():
+def is_ifuse_installed() -> bool:
     if shutil.which("ifuse"):
         return True
     return False
 
 
-def is_iPhone_mounted():
+def is_iPhone_mounted() -> bool:
     with open("/proc/mounts", "r") as mounts:
         for line in mounts:
             if "ifuse" in line:
@@ -109,7 +109,7 @@ def is_iPhone_mounted():
     return False
 
 
-def mount_iPhone(mount_point: Path):
+def mount_iPhone(mount_point: Path) -> None:
     if is_iPhone_mounted():
         raise Abort("iPhone is already mounted")
     mount_point.mkdir(parents=True, exist_ok=True)
@@ -121,12 +121,12 @@ def mount_iPhone(mount_point: Path):
         raise Abort("iPhone is not connected")
 
 
-def unmount_iPhone(mount_point: Path):
+def unmount_iPhone(mount_point: Path) -> None:
     subprocess.run(["umount", str(mount_point)])
     mount_point.rmdir()
 
 
-def get_serial_number():
+def get_serial_number() -> str:
     """
     Retrieve the serial number from a mounted iPhone.
     """
@@ -271,9 +271,7 @@ def process_dir_recursively(
             )
             conn.commit()
             cursor.close()
-
     except KeyboardInterrupt:
         print("[pyphotobackups] interrupted! saving current progress...")
         exit_code = 1
-
     return exit_code, counter, size_increment
