@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from . import __version__
 from .helpers import (
     Abort,
     cleanup_lock_file,
@@ -29,17 +30,30 @@ def cli():
         description="CLI tool to sync photos from your iPhone and organize them into YYYY-MM folders."
     )
     parser.add_argument(
+        "-v",
+        "--version",
+        action="store_true",
+        help="show current version",
+    )
+    parser.add_argument(
         "dest",
+        nargs="?",
         help="destination directory",
     )
     args = parser.parse_args()
+
+    if args.version:
+        print(f"[pyphotobackups] v{__version__}")
+        sys.exit(0)
+    if not args.dest:
+        raise Abort("must provide a destination directory")
     dest = Path(args.dest)
     if not dest.exists():
         raise Abort("destination does not exist")
     if not dest.is_dir():
         raise Abort("destination is not a directory")
     if not is_ifuse_installed():
-        raise Abort("command ifuse not found. make sure it's installed on your system")
+        raise Abort("command `ifuse` not found. make sure it's installed on your system")
     ROOT.mkdir(exist_ok=True)
     if is_lock_file_exists(ROOT):
         raise Abort(
