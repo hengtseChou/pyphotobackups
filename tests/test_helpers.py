@@ -1,7 +1,9 @@
 import builtins
 import subprocess
 from datetime import datetime
-from unittest.mock import MagicMock, mock_open, patch
+from pathlib import Path
+from subprocess import CalledProcessError
+from unittest.mock import Mock, mock_open, patch
 
 import pytest
 
@@ -13,7 +15,9 @@ from pyphotobackups.helpers import (
     get_db_path,
     get_directory_size,
     get_file_timestamp,
+    get_photo_creation_time,
     get_serial_number,
+    get_video_creation_time,
     init_db,
     is_ifuse_installed,
     is_iPhone_mounted,
@@ -154,7 +158,7 @@ def test_iPhone_not_mounted():
 
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_mount_iPhone_success(mock_subprocess_run, tmp_path):
-    mock_subprocess_run.return_value = MagicMock(returncode=0)
+    mock_subprocess_run.return_value = Mock(returncode=0)
     mount_point = tmp_path / "mount" / "point"
 
     mount_iPhone(mount_point)
@@ -169,7 +173,7 @@ def test_mount_iPhone_success(mock_subprocess_run, tmp_path):
 
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_mount_iPhone_not_connected(mock_subprocess_run, tmp_path):
-    mock_subprocess_run.return_value = MagicMock(returncode=1)
+    mock_subprocess_run.return_value = Mock(returncode=1)
     mount_point = tmp_path / "mount" / "point"
 
     with pytest.raises(Abort):
@@ -195,7 +199,7 @@ def test_unmount_iPhone(mock_subprocess_run, tmp_path):
 
 @patch("pyphotobackups.helpers.subprocess.run")
 def test_get_serial_number(mock_subprocess_run):
-    mock_subprocess_run.return_value = MagicMock(stdout="123456789\n")
+    mock_subprocess_run.return_value = Mock(stdout="123456789\n")
     serial_number = get_serial_number()
     assert serial_number == "123456789"
     mock_subprocess_run.assert_called_once_with(
@@ -211,20 +215,98 @@ def test_get_directory_size(tmp_path):
     assert size == 1024
 
 
-def test_get_file_timestamp(tmp_path):
-    test_file = tmp_path / "test.txt"
-    test_file.touch()
-    timestamp = get_file_timestamp(test_file)
-    assert isinstance(timestamp, datetime)
-    assert timestamp == datetime.fromtimestamp(test_file.stat().st_mtime)
+@pytest.fixture
+def fake_image_path():
+    return Path("/fake/photo.jpg")
 
 
-def test_convert_size_to_readable():
+@pytest.fixture
+def fake_video_path():
+    return Path("/fake/video.mp4")
+
+
+@patch("PIL.Image.open")
+def test_get_photo_creation_time_exif(mock_open, fake_image_path):
+    mock_img = Mock()
+    mock_img.getexif.return_value = {36867: "2023:01:15 14:22:30"}
+    mock_open.return_value = mock_img
+
+    result = get_photo_creation_time(fake_image_path)
+    assert result == datetime(2023, 1, 15, 14, 22, 30)
+
+
+@patch("PIL.Image.open")
+def test_get_photo_creation_time_no_exif(mock_open, fake_image_path):
+    mock_img = Mock()
+    mock_img.getexif.return_value = {}
+    mock_open.return_value = mock_img
+
+    result = get_photo_creation_time(fake_image_path)
+    assert result is None
+
+
+@patch(
+    "subprocess.check_output",
+    return_value='{"format": {"tags": {"creation_time": "2022-06-10T12:00:00Z"}}}',
+)
+def test_get_video_creation_time(mock_check_output, fake_video_path):
+    result = get_video_creation_time(fake_video_path)
+    assert result == datetime.fromisoformat("2022-06-10T12:00:00+00:00")
+
+
+@patch("subprocess.check_output", side_effect=CalledProcessError(1, "ffprobe"))
+def test_get_video_creation_time_invalid(mock_check_output, fake_video_path):
+    result = get_video_creation_time(fake_video_path)
+    assert result is None
+    assert isinstance(result, type(None))
+
+
+@patch(
+    "pyphotobackups.helpers.get_photo_creation_time", return_value=datetime(2023, 1, 1, 10, 0, 0)
+)
+def test_get_file_timestamp_photo_metadata(mock_get_photo_creation_time, fake_image_path):
+    result = get_file_timestamp(fake_image_path)
+    assert result == datetime(2023, 1, 1, 10, 0, 0)
+
+
+@patch(
+    "pyphotobackups.helpers.get_video_creation_time", return_value=datetime(2022, 6, 10, 12, 0, 0)
+)
+def test_get_file_timestamp_video_metadata(mock_get_video_creation_time, fake_video_path):
+    result = get_file_timestamp(fake_video_path)
+    assert result == datetime(2022, 6, 10, 12, 0, 0)
+
+
+@patch("pyphotobackups.helpers.get_photo_creation_time", return_value=None)
+@patch.object(Path, "stat")
+def test_get_file_timestamp_fallback(mock_stat, mock_get_photo_creation_time, fake_image_path):
+    mock_stat.return_value.st_mtime = 1700000000
+
+    result = get_file_timestamp(fake_image_path)
+    assert result == datetime.fromtimestamp(1700000000)
+
+
+def test_convert_size_to_readable_zero_bytes():
     assert convert_size_to_readable(0) == "0B"
+
+
+def test_convert_size_to_readable_bytes():
     assert convert_size_to_readable(512) == "512.0B"
+
+
+def test_convert_size_to_readable_kilobytes():
     assert convert_size_to_readable(1024) == "1.0K"
+
+
+def test_convert_size_to_readable_megabytes():
     assert convert_size_to_readable(1048576) == "1.0M"
+
+
+def test_convert_size_to_readable_gigabytes():
     assert convert_size_to_readable(1073741824) == "1.0G"
+
+
+def test_convert_size_to_readable_terabytes():
     assert convert_size_to_readable(1099511627776) == "1.0T"
 
 

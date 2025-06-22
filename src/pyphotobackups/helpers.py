@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import errno
+import json
 import os
 import shutil
 import sqlite3
@@ -6,6 +9,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from PIL import Image
 from tqdm import tqdm
 
 
@@ -145,12 +149,62 @@ def get_directory_size(path: Path) -> int:
     return total_size
 
 
-def get_file_timestamp(file_path: Path) -> datetime:
+def get_photo_creation_time(path: Path) -> datetime | None:
     """
-    Retrieve the modification time of a file.
+    Extract the DateTimeOriginal EXIF datetime from image metadata.
     """
-    mtime = file_path.stat().st_mtime
-    return datetime.fromtimestamp(mtime)
+    DATETIME_ORIGINAL_TAG = 36867
+    try:
+        exif = Image.open(path).getexif()
+        if DATETIME_ORIGINAL_TAG in exif:
+            raw_date = exif[DATETIME_ORIGINAL_TAG]
+            return datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        pass
+    return None
+
+
+def get_video_creation_time(path: Path) -> datetime | None:
+    """
+    Extract creation timestamp from video metadata using ffprobe.
+    """
+    cmd = [
+        "ffprobe",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_entries",
+        "format_tags=creation_time",
+        str(path),
+    ]
+    try:
+        output = subprocess.check_output(cmd, text=True)
+        tags = json.loads(output).get("format", {}).get("tags", {})
+        creation_time = tags.get("creation_time")
+        if creation_time:
+            return datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
+    except (subprocess.CalledProcessError, KeyError, ValueError):
+        pass
+    return None
+
+
+def get_file_timestamp(path: Path) -> datetime:
+    """
+    Get the most accurate timestamp for a file, preferring metadata over filesystem times.
+    """
+    ext = path.suffix.lower()
+    timestamp = None
+
+    if ext in {".jpg", ".jpeg", ".heic", ".png"}:
+        timestamp = get_photo_creation_time(path)
+    elif ext in {".mp4", ".mov", ".3gp"}:
+        timestamp = get_video_creation_time(path)
+
+    # Fallback to last modified time if metadata fails
+    if timestamp is None:
+        timestamp = datetime.fromtimestamp(path.stat().st_mtime)
+    return timestamp
 
 
 def convert_size_to_readable(size: int) -> str:
