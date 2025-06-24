@@ -4,10 +4,14 @@
 
 A very simple command line tool to sync photos and videos from your iPhone to your drive, and organize by the time you took them.
 
-## Feature
+## Features
 
 1. **Auto-Organize by Date:** Sorts photos and videos into YYYY-MM folders based on modification time.
 2. **Incremental Backup:** Syncs only new files, speeding up backups.
+
+## Limitation
+
+For technical reasons related to filesystem manipulation, pyphotobackups is currently limited to Linux platforms.
 
 ## Installation
 
