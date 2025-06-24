@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e  # Exit immediately if a command fails
+set -o pipefail  # Catch failures in pipelines
+
+# Move to the repo root
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+# Run formatting and checks
+uv run ruff format src/ tests/
+uv run ruff check src/ tests/ --fix
+
+# Run tests
+pytest
