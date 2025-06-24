@@ -1,14 +1,20 @@
 #!/bin/bash
-set -e  # Exit immediately if a command fails
-set -o pipefail  # Catch failures in pipelines
+set -e          # Exit immediately if a command fails
+set -o pipefail # Catch failures in pipelines
 
 # Move to the repo root
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
 
+# Keep track of staged files
+STAGED_FILES=$(git diff --name-only --cached)
+
 # Run formatting and checks
 uv run ruff format src/ tests/
 uv run ruff check src/ tests/ --fix
+
+# Restage the previously staged files
+echo "$STAGED_FILES" | xargs -d '\n' git add
 
 # Run tests
 pytest
