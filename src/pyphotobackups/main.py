@@ -1,5 +1,6 @@
 import argparse
 import os
+import platform
 import sys
 import uuid
 from datetime import datetime
@@ -45,6 +46,9 @@ def cli():
     if args.version:
         print(f"[pyphotobackups] v{__version__}")
         sys.exit(0)
+    system = platform.system()
+    if system != "Linux":
+        raise Abort(f"{system} is currently not supported")
     if not args.dest:
         raise Abort("must provide a destination directory")
     dest = Path(args.dest)
