@@ -11,6 +11,8 @@ A very simple command line tool to sync photos and videos from your iPhone to yo
 
 ## Installation
 
+> ⚠️ Note that for technical reasons related to filesystem manipulation, `pyphotobackups` is only available on Linux platforms right now.
+
 ### with uv
 
 ```
@@ -22,8 +24,6 @@ uv tool install pyphotobackups
 ```
 pipx install pyphotobackups
 ```
-
-> ⚠️ Note that for technical reasons related to filesystem manipulation, `pyphotobackups` is only available on Linux platforms right now.
 
 ## Dependency
 
