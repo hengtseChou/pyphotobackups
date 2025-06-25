@@ -23,6 +23,8 @@ uv tool install pyphotobackups
 pipx install pyphotobackups
 ```
 
+> ⚠️ Note that for technical reasons related to filesystem manipulation, `pyphotobackups` is only available on Linux platforms right now.
+
 ## Dependency
 
 You will need to have `ifuse` installed on your system.
@@ -34,10 +36,6 @@ pyphotobackups <DESTINATION>
 ```
 
 That's it!
-
-## Limitation
-
-For technical reasons related to filesystem manipulation, pyphotobackups is currently limited to Linux platforms.
 
 ## License
 
