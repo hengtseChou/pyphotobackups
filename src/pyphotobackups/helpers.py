@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import errno
-import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
+import piexif
 from PIL import Image
+from pillow_heif import register_heif_opener
 from tqdm import tqdm
+
+register_heif_opener()
 
 
 class Abort(Exception):
@@ -149,61 +153,72 @@ def get_directory_size(path: Path) -> int:
     return total_size
 
 
-def get_photo_creation_time(path: Path) -> datetime | None:
-    """
-    Extract the DateTimeOriginal EXIF datetime from image metadata.
-    """
-    DATETIME_ORIGINAL_TAG = 36867
-    try:
-        exif = Image.open(path).getexif()
-        if DATETIME_ORIGINAL_TAG in exif:
-            raw_date = exif[DATETIME_ORIGINAL_TAG]
-            return datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S")
-    except Exception:
-        pass
+def get_timestamp_by_png_metadata(path: Path) -> datetime | None:
+    with open(path, "rb") as f:
+        # Verify PNG signature
+        signature = f.read(8)
+        if signature != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("Not a valid PNG file.")
+
+        # Iterate over PNG chunks
+        while True:
+            length_bytes = f.read(4)
+            if len(length_bytes) < 4:
+                break  # EOF
+            length = int.from_bytes(length_bytes, byteorder="big")
+            chunk_type = f.read(4).decode("ascii")
+            data = f.read(length)
+            f.read(4)  # skip CRC
+
+            if chunk_type == "eXIf":
+                # Look for EXIF-style datetime pattern
+                match = re.search(rb"\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}", data)
+                if match:
+                    datetime_str = match.group().decode()
+                    return datetime.strptime(datetime_str, "%Y:%m:%d %H:%M:%S")
     return None
 
 
-def get_video_creation_time(path: Path) -> datetime | None:
-    """
-    Extract creation timestamp from video metadata using ffprobe.
-    """
-    cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_entries",
-        "format_tags=creation_time",
-        str(path),
-    ]
-    try:
-        output = subprocess.check_output(cmd, text=True)
-        tags = json.loads(output).get("format", {}).get("tags", {})
-        creation_time = tags.get("creation_time")
-        if creation_time:
-            return datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
-    except (subprocess.CalledProcessError, KeyError, ValueError):
-        pass
+def get_timestamp_by_jpeg_metadata(path: Path) -> datetime | None:
+    exif_dict = piexif.load(str(path))
+    date_time_original = exif_dict["Exif"].get(piexif.ExifIFD.DateTimeOriginal)
+    if date_time_original:
+        return datetime.strptime(date_time_original.decode("utf-8"), "%Y:%m:%d %H:%M:%S")
     return None
 
 
-def get_file_timestamp(path: Path) -> datetime:
+def get_timestamp_by_heic_metadata(path: Path) -> datetime | None:
+    image = Image.open(path)
+    exif_data = image.getexif()
+
+    for tag_id, value in exif_data.items():
+        tag = Image.ExifTags.TAGS.get(tag_id, tag_id)
+        if tag == "DateTime":
+            return datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+    return None
+
+
+def get_timestamp_by_file_system(path: Path) -> datetime | None:
+    timestamp = path.stat().st_mtime
+    last_modified = datetime.fromtimestamp(timestamp)
+    return last_modified
+
+
+def get_timestamp(path: Path) -> datetime:
     """
     Get the most accurate timestamp for a file, preferring metadata over filesystem times.
     """
     ext = path.suffix.lower()
-    timestamp = None
-
-    if ext in {".jpg", ".jpeg", ".heic", ".png"}:
-        timestamp = get_photo_creation_time(path)
-    elif ext in {".mp4", ".mov", ".3gp"}:
-        timestamp = get_video_creation_time(path)
-
-    # Fallback to last modified time if metadata fails
+    func_mapping = {
+        "jpg": get_timestamp_by_jpeg_metadata,
+        "jpeg": get_timestamp_by_jpeg_metadata,
+        "png": get_timestamp_by_png_metadata,
+        "heic": get_timestamp_by_heic_metadata,
+        "mov": get_timestamp_by_file_system,
+    }
+    timestamp = func_mapping.get(ext, get_timestamp_by_file_system)(path)
     if timestamp is None:
-        timestamp = datetime.fromtimestamp(path.stat().st_mtime)
+        timestamp = get_timestamp_by_file_system(path)
     return timestamp
 
 
@@ -284,7 +299,7 @@ def process_dir_recursively(
             if is_processed_source(source, conn):
                 continue
             file_name = file_path.name
-            file_timestamp = get_file_timestamp(file_path)
+            file_timestamp = get_timestamp(file_path)
             year_month = file_timestamp.strftime("%Y-%m")
             target_subdir = target_dir / year_month
             target_subdir.mkdir(parents=True, exist_ok=True)
