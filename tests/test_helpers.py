@@ -1,7 +1,6 @@
 import builtins
 import subprocess
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
 import pytest
@@ -98,6 +97,7 @@ def test_init_db_run_table_columns(tmp_path):
         "start": "TIMESTAMP",
         "end": "TIMESTAMP",
         "elapsed_time": "TEXT",
+        "exit_code": "INTEGER",
         "dest_size": "TEXT",
         "dest_size_increment": "TEXT",
         "new_sync": "INTEGER",
@@ -211,16 +211,6 @@ def test_get_directory_size(tmp_path):
     assert size == 1024
 
 
-@pytest.fixture
-def fake_image_path():
-    return Path("/fake/photo.jpg")
-
-
-@pytest.fixture
-def fake_video_path():
-    return Path("/fake/video.mp4")
-
-
 def test_convert_size_to_readable_zero_bytes():
     assert convert_size_to_readable(0) == "0B"
 
@@ -257,9 +247,11 @@ def test_process_dir_recursively(tmp_path):
     (source_sub_dir / "file2.txt").write_text("content2")
 
     conn = init_db(tmp_path)
-    exit_code, counter, size_increment = process_dir_recursively(source_dir, target_dir, conn, 0, 0)
+    exit_code, processed, size_increment = process_dir_recursively(
+        source_dir, target_dir, conn, 0, 0
+    )
 
     assert exit_code == 0
-    assert counter == 2
+    assert processed == 2
     assert size_increment == 16
     conn.close()

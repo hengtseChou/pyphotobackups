@@ -6,6 +6,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -80,6 +81,7 @@ def init_db(target_dir: Path) -> sqlite3.Connection:
             start TIMESTAMP NOT NULL,
             end TIMESTAMP NOT NULL,
             elapsed_time TEXT NOT NULL,
+            exit_code INTEGER NOT NULL,
             dest_size TEXT NOT NULL,
             dest_size_increment TEXT NOT NULL,
             new_sync INTEGER NOT NULL
@@ -198,7 +200,7 @@ def get_timestamp_by_heic_metadata(path: Path) -> datetime | None:
     return None
 
 
-def get_timestamp_by_file_system(path: Path) -> datetime | None:
+def get_timestamp_by_file_system(path: Path) -> datetime:
     timestamp = path.stat().st_mtime
     last_modified = datetime.fromtimestamp(timestamp)
     return last_modified
@@ -208,13 +210,12 @@ def get_timestamp(path: Path) -> datetime:
     """
     Get the most accurate timestamp for a file, preferring metadata over filesystem times.
     """
-    ext = path.suffix.lower()
+    ext = path.suffix.lower()[1:]
     func_mapping = {
         "jpg": get_timestamp_by_jpeg_metadata,
         "jpeg": get_timestamp_by_jpeg_metadata,
         "png": get_timestamp_by_png_metadata,
         "heic": get_timestamp_by_heic_metadata,
-        "mov": get_timestamp_by_file_system,
     }
     timestamp = func_mapping.get(ext, get_timestamp_by_file_system)(path)
     if timestamp is None:
@@ -246,7 +247,7 @@ def process_dir_recursively(
     source_dir: Path,
     target_dir: Path,
     conn: sqlite3.Connection,
-    counter: int,
+    processed: int,
     size_increment: int,
 ) -> tuple[int, int, int]:
     """
@@ -257,20 +258,19 @@ def process_dir_recursively(
         - source_dir (Path): The directory to process.
         - target_dir (Path): The destination directory for the files.
         - conn (sqlite3.Connection): The database connection for file sync tracking.
-        - counter (int): The number of files processed, updated during recursion.
+        - processed (int): The number of files processed, updated during recursion.
         - size_increment (int): The total size of processed files, updated during recursion.
 
     Returns:
         tuple[int, int, int]:
-            - exit_code (int): 1 if interrupted, 0 if successful.
-            - counter (int): Updated file count.
+            - exit_code (int): 0: successful, 1: interrupted, 2: disconnected.
+            - processed (int): Updated file count.
             - size_increment (int): Updated total file size in bytes.
 
     Notes:
         - Copies files to a subdirectory based on their timestamp.
         - If file with the same name exists, an increment suffix will be appended.
         - Skips already processed files and handles errors like permission issues or insufficient space.
-        - Stops and returns if interrupted (via KeyboardInterrupt).
     """
     try:
         dirs = [path for path in source_dir.iterdir() if path.is_dir()]
@@ -280,14 +280,14 @@ def process_dir_recursively(
 
         # depth first
         for dir in dirs:
-            exit_code, counter, size_increment = process_dir_recursively(
-                dir, target_dir, conn, counter, size_increment
+            exit_code, processed, size_increment = process_dir_recursively(
+                dir, target_dir, conn, processed, size_increment
             )
-            if exit_code == 1:
-                return exit_code, counter, size_increment
+            if exit_code != 0:
+                return exit_code, processed, size_increment
 
         if not files:
-            return exit_code, counter, size_increment
+            return exit_code, processed, size_increment
         for file_path in tqdm(
             files,
             desc=f"syncing : {source_dir.name:<18} |",
@@ -304,19 +304,11 @@ def process_dir_recursively(
             target_subdir = target_dir / year_month
             target_subdir.mkdir(parents=True, exist_ok=True)
             target_file_path = target_subdir / file_name
-            # Ensure unique file name by incrementing if a duplicate exists
-            duplicates = 1
-            while target_file_path.exists():
-                stem, suffix = file_name.rsplit(".", 1)
-                file_name = f"{stem}_{duplicates}.{suffix}"
-                target_file_path = target_subdir / file_name
-                duplicates += 1
-            target_file_path_tmp = target_subdir / f"{file_name}.tmp"
 
             try:
-                # prevents incomplete files by copying to a temporary file first
-                shutil.copy2(file_path, target_file_path_tmp)
-                os.replace(target_file_path_tmp, target_file_path)
+                with tempfile.NamedTemporaryFile(dir=target_subdir, delete=False) as temp_file:
+                    shutil.copy2(file_path, temp_file.name)
+                    os.replace(temp_file.name, target_file_path)
             except OSError as e:
                 if e.errno == errno.EACCES:
                     print("[pyphotobackups] permission denied")
@@ -326,7 +318,7 @@ def process_dir_recursively(
                     raise Abort
                 raise e
 
-            counter += 1
+            processed += 1
             size_increment += file_path.stat().st_size
             cursor = conn.cursor()
             cursor.execute(
@@ -341,6 +333,12 @@ def process_dir_recursively(
             conn.commit()
             cursor.close()
     except KeyboardInterrupt:
-        print("[pyphotobackups] interrupted! saving current progress...")
+        print("[pyphotobackups] interrupted!")
         exit_code = 1
-    return exit_code, counter, size_increment
+    except OSError as e:
+        if e.errno == errno.EIO:
+            print("[pyphotobackups] io error occurred! did you remove your iPhone connection?")
+            exit_code = 2
+        else:
+            raise e
+    return exit_code, processed, size_increment

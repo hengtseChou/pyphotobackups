@@ -1,6 +1,6 @@
 import argparse
-import os
 import platform
+import shutil
 import sys
 import uuid
 from datetime import datetime
@@ -16,6 +16,7 @@ from .helpers import (
     get_serial_number,
     init_db,
     is_ifuse_installed,
+    is_iPhone_mounted,
     is_lock_file_exists,
     mount_iPhone,
     process_dir_recursively,
@@ -49,6 +50,8 @@ def cli():
     system = platform.system()
     if system != "Linux":
         raise Abort(f"{system} is currently not supported")
+    if sys.version_info < (3, 9):
+        raise Abort("Python 3.9 or higher is required")
     if not args.dest:
         raise Abort("must provide a destination directory")
     dest = Path(args.dest)
@@ -65,6 +68,7 @@ def cli():
         )
     create_lock_file(ROOT)
     mount_iPhone(MOUNT_POINT)
+    serial_number = get_serial_number()
 
     conn = init_db(dest)
     start = datetime.now()
@@ -76,19 +80,19 @@ def cli():
     end = datetime.now()
     elapsed_time = end - start
     minutes, seconds = divmod(int(elapsed_time.total_seconds()), 60)
-    print("[pyphotobackups] calculating space usage...")
     dest_size = get_directory_size(dest)
 
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT OR IGNORE INTO run (id, serial_number, dest, start, end, elapsed_time, dest_size, dest_size_increment, new_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO run (id, serial_number, dest, start, end, elapsed_time, exit_code, dest_size, dest_size_increment, new_sync) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             str(uuid.uuid4()),
-            get_serial_number(),
+            serial_number,
             str(dest.absolute()),
             start,
             end,
             f"{minutes} min {seconds} sec",
+            exit_code,
             convert_size_to_readable(dest_size),
             convert_size_to_readable(file_size_increment),
             new_sync,
@@ -98,11 +102,15 @@ def cli():
     cursor.close()
     cleanup()
 
-    if exit_code == 1:
-        print("[pyphotobackups] backup stopped")
-    else:
+    if exit_code == 0:
         print("[pyphotobackups] backup completed")
-    print("[pyphotobackups] you can now safely remove your iPhone")
+        print("[pyphotobackups] you can now safely remove your iPhone")
+    elif exit_code == 1:
+        print("[pyphotobackups] saving current progress...")
+        print("[pyphotobackups] you can now safely remove your iPhone")
+    elif exit_code == 2:
+        print("[pyphotobackups] saving current progress...")
+
     print(f"new backups       : {new_sync} ({convert_size_to_readable(file_size_increment)})")
     print(f"total space usage : {convert_size_to_readable(dest_size)}")
     print(f"elapsed time      : {minutes} min {seconds} sec")
@@ -110,10 +118,10 @@ def cli():
 
 def cleanup():
     cleanup_lock_file(ROOT)
-    if MOUNT_POINT.exists() and os.path.ismount(MOUNT_POINT):
+    if is_iPhone_mounted():
         unmount_iPhone(MOUNT_POINT)
     if ROOT.exists():
-        ROOT.rmdir()
+        shutil.rmtree(ROOT)
 
 
 def abort():
