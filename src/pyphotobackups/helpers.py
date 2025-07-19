@@ -104,6 +104,13 @@ def is_processed_source(source: str, conn: sqlite3.Connection) -> bool:
     return count > 0
 
 
+def is_unwanted_file(source: str):
+    ext = source.split(".")[1].lower()
+    if ext == "aae":
+        return True
+    False
+
+
 # iPhone connection
 def is_ifuse_installed() -> bool:
     if shutil.which("ifuse"):
@@ -296,6 +303,8 @@ def process_dir_recursively(
             miniters=1,
         ):
             source = str(Path(*file_path.parts[-2:]))
+            if is_unwanted_file(source):
+                continue
             if is_processed_source(source, conn):
                 continue
             file_name = file_path.name
