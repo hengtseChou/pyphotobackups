@@ -1,6 +1,6 @@
 [project]
 name = "pyphotobackups"
-version = "0.1.14"
+version = "0.2.0"
 description = "command line tool to sync photos from your iPhone and organize them into YYYY-MM folders."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -15,6 +15,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/hengtseChou/pyphotobackups"
+
+[build-system]
+requires = ["uv_build>=0.8.0,<0.9.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = ["pytest>=8.3.5", "pytest-cov>=6.1.1", "ruff>=0.11.11"]

@@ -12,9 +12,11 @@ STAGED_FILES=$(git diff --name-only --cached)
 # Run formatting and checks
 uv run ruff format src/ tests/
 uv run ruff check src/ tests/ --fix
+uv sync
 
 # Restage the previously staged files
 echo "$STAGED_FILES" | xargs -d '\n' git add
+git add uv.lock
 
 # Run tests
 pytest

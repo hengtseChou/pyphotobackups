@@ -284,8 +284,8 @@ wheels = [
 
 [[package]]
 name = "pyphotobackups"
-version = "0.1.14"
-source = { virtual = "." }
+version = "0.2.0"
+source = { editable = "." }
 dependencies = [
     { name = "piexif" },
     { name = "pillow" },
